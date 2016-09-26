@@ -88,8 +88,8 @@ package object bigquery {
     }
 
     /**
-      * Set GCP pk12 key file.
-      */
+     * Set GCP pk12 key file.
+     */
     def setGcpPk12KeyFile(pk12KeyFile: String): Unit = {
       conf.set("google.cloud.auth.service.account.keyfile", pk12KeyFile)
       conf.set("mapred.bq.auth.service.account.keyfile", pk12KeyFile)
