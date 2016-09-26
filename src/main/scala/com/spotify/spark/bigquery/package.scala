@@ -48,7 +48,7 @@ package object bigquery {
 
     val sc = self.sparkContext
     val conf = sc.hadoopConfiguration
-    val bq = BigQueryClient.getInstance(conf)
+    lazy val bq = BigQueryClient.getInstance(conf)
 
     // Register GCS implementation
     if (conf.get("fs.gs.impl") == null) {
@@ -94,6 +94,15 @@ package object bigquery {
       conf.set("google.cloud.auth.service.account.keyfile", pk12KeyFile)
       conf.set("mapred.bq.auth.service.account.keyfile", pk12KeyFile)
       conf.set("fs.gs.auth.service.account.keyfile", pk12KeyFile)
+    }
+
+    /**
+     * Set GCP service account email.
+     */
+    def setGcpServiceAccountEmail(email: String): Unit = {
+      conf.set("google.cloud.auth.service.account.email", email)
+      conf.set("mapred.bq.auth.service.account.email", email)
+      conf.set("fs.gs.auth.service.account.email", email)
     }
 
     /**
