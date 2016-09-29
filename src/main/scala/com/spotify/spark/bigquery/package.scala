@@ -18,7 +18,7 @@
 package com.spotify.spark
 
 import com.databricks.spark.avro._
-import com.google.api.services.bigquery.model.TableReference
+import com.google.api.services.bigquery.model.{DatasetReference, TableReference}
 import com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem
 import com.google.cloud.hadoop.io.bigquery._
 import org.apache.avro.Schema
@@ -109,7 +109,17 @@ package object bigquery {
      * Perform a BigQuery SELECT query and load results as a [[DataFrame]].
      * @param sqlQuery SQL query in SQL-2011 dialect.
      */
-    def bigQuerySelect(sqlQuery: String): DataFrame = bigQueryTable(bq.query(sqlQuery))
+    def bigQuerySelect(sqlQuery: String): DataFrame =
+      bigQueryTable(bq.query(sqlQuery))
+
+    /**
+     * Perform a BigQuery SELECT query and load results as a [[DataFrame]] into
+     * specified table.
+     * @param sqlQuery SQL query in SQL-2011 dialect.
+     * @param tableSpec table specification where results will be stored.
+     */
+    def bigQuerySelect(sqlQuery: String, tableSpec: String): DataFrame =
+      bigQueryTable(bq.queryToTable(sqlQuery, tableSpec))
 
     /**
      * Load a BigQuery table as a [[DataFrame]].
@@ -142,7 +152,6 @@ package object bigquery {
      */
     def bigQueryTable(tableSpec: String): DataFrame =
       bigQueryTable(BigQueryStrings.parseTableReference(tableSpec))
-
   }
 
   /**

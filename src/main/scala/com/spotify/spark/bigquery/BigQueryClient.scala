@@ -37,12 +37,14 @@ import org.slf4j.{Logger, LoggerFactory}
 import scala.collection.JavaConverters._
 import scala.util.Random
 import scala.util.control.NonFatal
+import scala.collection.JavaConversions._
+
 
 private[bigquery] object BigQueryClient {
   val STAGING_DATASET_PREFIX = "bq.staging_dataset.prefix"
   val STAGING_DATASET_PREFIX_DEFAULT = "spark_bigquery_staging_"
   val STAGING_DATASET_LOCATION = "bq.staging_dataset.location"
-  val STAGING_DATASET_LOCATION_DEFAULT = "US"
+  val STAGING_DATASET_LOCATION_DEFAULT = "EU"
   val STAGING_DATASET_TABLE_EXPIRATION_MS = 86400000L
   val STAGING_DATASET_DESCRIPTION = "Spark BigQuery staging dataset"
 
@@ -77,15 +79,12 @@ private[bigquery] class BigQueryClient(conf: Configuration) {
     CacheBuilder.newBuilder()
       .expireAfterWrite(STAGING_DATASET_TABLE_EXPIRATION_MS, TimeUnit.MILLISECONDS)
       .build[String, TableReference](new CacheLoader[String, TableReference] {
-      override def load(key: String): TableReference = {
-        val sqlQuery = key
+      override def load(sqlQuery: String): TableReference = {
         logger.info(s"Executing query $sqlQuery")
-
         val location = conf.get(STAGING_DATASET_LOCATION, STAGING_DATASET_LOCATION_DEFAULT)
         val destinationTable = temporaryTable(location)
         val tableName = BigQueryStrings.toString(destinationTable)
         logger.info(s"Destination table: $destinationTable")
-
         val job = createQueryJob(sqlQuery, destinationTable, dryRun = false)
         waitForJob(job)
         destinationTable
@@ -104,7 +103,16 @@ private[bigquery] class BigQueryClient(conf: Configuration) {
    */
   def query(sqlQuery: String): TableReference = queryCache.get(sqlQuery)
 
-  /**
+  def queryToTable(sqlQuery: String, tableSpec: String): TableReference = {
+    logger.info(s"Executing query $sqlQuery into $tableSpec")
+    val tableRef = BigQueryStrings.parseTableReference(tableSpec)
+    val tableName = BigQueryStrings.toString(tableRef)
+    val job = createQueryJob(sqlQuery, tableRef, dryRun = false)
+    waitForJob(job)
+    tableRef
+  }
+
+    /**
    * Load an Avro data set on GCS to a BigQuery table.
    */
   def load(gcsPath: String, destinationTable: TableReference,
@@ -130,10 +138,52 @@ private[bigquery] class BigQueryClient(conf: Configuration) {
     waitForJob(job)
   }
 
+  def listDatasets(projectId: String): Seq[DatasetReference] =
+    bigquery.datasets().list(projectId).execute().getDatasets.asScala.map(_.getDatasetReference)
+
+  def listTables(projectId: String, datasetId: String): Seq[TableList.Tables] = {
+    val req = bigquery.tables.list(projectId, datasetId)
+    req.setMaxResults(1000L)
+    var res = req.execute()
+    val tables = res.getTables match {
+      case null => collection.mutable.ArrayBuffer[TableList.Tables]()
+      case initial_tables =>
+        val tables = collection.mutable.ArrayBuffer[TableList.Tables](initial_tables: _*)
+        while (res.getNextPageToken != null) {
+          req.setPageToken(res.getNextPageToken)
+          res = req.execute()
+          tables ++= res.getTables
+        }
+        tables
+    }
+    tables
+  }
+
+  def getSchema(table: TableReference): TableSchema = {
+    val schema = bigquery
+      .tables()
+      .get(table.getProjectId, table.getDatasetId, table.getTableId)
+      .execute()
+      .getSchema
+    logger.info(s"Schema for table ${BigQueryStrings.toString(table)}: $schema")
+    schema
+  }
+
+  def getSchema(tableSpec: String): TableSchema =
+    getSchema(BigQueryStrings.parseTableReference(tableSpec))
+
   private def waitForJob(job: Job): Unit = {
     BigQueryUtils.waitForJobCompletion(bigquery, projectId, job.getJobReference, new Progressable {
       override def progress(): Unit = {}
     })
+  }
+
+  def deleteTable(tableSpec: String): Unit =
+    deleteTable(BigQueryStrings.parseTableReference(tableSpec))
+
+  def deleteTable(table: TableReference): Unit = {
+    logger.info(s"Deleting table ${BigQueryStrings.toString(table)}")
+    bigquery.tables().delete(table.getProjectId, table.getDatasetId, table.getTableId).execute()
   }
 
   private def stagingDataset(location: String): DatasetReference = {
