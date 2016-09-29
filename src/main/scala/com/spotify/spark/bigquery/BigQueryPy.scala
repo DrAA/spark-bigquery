@@ -4,41 +4,41 @@ import java.lang.{String => jString}
 import java.util.{ArrayList => jArray}
 
 import com.google.api.services.bigquery.model.{DatasetReference, TableList, TableSchema}
-import org.apache.spark.sql.{DataFrame, SQLContext}
+import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.scalatest.prop.Configuration
 
 import scala.collection.JavaConversions._
 
 class BigQueryPy {
 
-  var sqlc: SQLContext = null
+  var session: SparkSession = null
+  var client: BigQueryClient = null
 
-  def init(sqlc: SQLContext, projectId: jString): Unit = {
-    this.sqlc = sqlc
-    sqlc.setBigQueryProjectId(projectId)
+  def init(session: SparkSession): Unit = {
+    this.session = session
+    val conf = session.sparkContext.hadoopConfiguration
+    client = new BigQueryClient(conf)
   }
 
-  def init(sqlc: SQLContext): Unit =
-    init(sqlc, "xpn-analytics-notebook-1")
-
   def select(sql: jString): DataFrame =
-    sqlc.bigQuerySelect(sql)
+    session.sqlContext.bigQuerySelect(sql)
 
   def selectAsTable(sql: jString, tableName: jString): DataFrame =
-    sqlc.bigQuerySelect(sql, tableName)
+    session.sqlContext.bigQuerySelect(sql, tableName)
 
   def listDatasets(projectId: jString): jArray[DatasetReference] =
-    new jArray[DatasetReference](sqlc.bq.listDatasets(projectId))
+    new jArray[DatasetReference](session.sqlContext.bq.listDatasets(projectId))
 
   def listTables(projectId: jString, datasetId: jString): jArray[TableList.Tables] =
-    new jArray[TableList.Tables](sqlc.bq.listTables(projectId, datasetId))
+    new jArray[TableList.Tables](session.sqlContext.bq.listTables(projectId, datasetId))
 
   def getSchema(tableId: jString): TableSchema =
-    sqlc.bq.getSchema(tableId)
+    session.sqlContext.bq.getSchema(tableId)
 
   def saveDataFrame(tableSpec: jString, df: DataFrame): Unit =
     df.saveAsBigQueryTable(tableSpec)
 
   def deleteTable(tableSpec: jString): Unit =
-    sqlc.bq.deleteTable(tableSpec)
+    session.sqlContext.bq.deleteTable(tableSpec)
 
 }
